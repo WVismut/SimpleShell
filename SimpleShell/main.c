@@ -1,11 +1,14 @@
+// header files
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <string.h>
 #include <stdbool.h>
+
+// maximum number of arguments for a command
 #define MAX_ARGS 20
-#define MAX_CHILDREN 10
+
 #define RESET "\033[0m"
 #define CYAN "\033[36m"
 #define GREEN "\033[32m"
@@ -16,10 +19,15 @@ int main() {
 	char input[256];
 	char *args[MAX_ARGS + 1];
 	char *commands[MAX_ARGS + 1];
+	char *q_toks[MAX_ARGS + 1];
+	bool is_in_quotes[MAX_ARGS + 1];
 	char *token;
-	int amm_commands; // ammount of commands in user input
+	int amm_commands;
+	int amm_q_tokens;
 	int i;
 	bool disown;
+	bool q_state;
+	bool previous_q_state;
 	pid_t to_wait;
 
 	while (1) {
@@ -31,7 +39,7 @@ int main() {
 			continue; // skip cycle if user input is empty
 		input[strcspn(input, "\n")] = 0; // change \n to \0
 
-		// tokenize input into separate commands
+		// this part of code tokenize input into separate commands
 		amm_commands = 0;
 		token = strtok(input, "|");
 		while (token != NULL) {
@@ -41,20 +49,57 @@ int main() {
 		}
 
 		for (int command_i = 0; command_i < amm_commands; command_i++) {
+			// Now, when commands[] contains all separate commands from input, it's time to tokenize them
+			// Next part of code tokenizes command based on quotation marks
+			i = 0;
+			q_state = false;
+			previous_q_state = false;
+			token = strtok(commands[command_i], "\"");
+			while (token != NULL) {
+
+				// this thing skips empty tokens which appear in between two arguments in quotation marks
+				if (strcmp(token, " ") != 0) {
+					q_toks[i] = token + previous_q_state;
+					is_in_quotes[i] = q_state;
+					i++;
+				}
+
+				// update q_state
+				previous_q_state = q_state;
+				if (q_state)
+					q_state = false;
+				else
+					q_state = true;
+
+				// get a new token
+				token = strtok(NULL, "\"");
+			}
+			amm_q_tokens = i;
+
 			// tokenize arguments
 			disown = false;
 			i = 0;
-			token = strtok(commands[command_i], " ");
-			while (token != NULL) {
-				if ((strcmp(token, "disown") == 0) & (i == 0)) {
-					disown = true;
-				}
-				args[i - disown] = token;
-				i++;
-				token = strtok(NULL, " ");
-			}
-			args[i - disown] = NULL;
+			for (int l = 0; l < amm_q_tokens; l++) {
+				if (!is_in_quotes[l]) {
+					token = strtok(q_toks[l], " ");
+					while (token != NULL) {
 
+						// disown option
+						if ((strcmp(token, "disown") == 0) & (i == 0)) {
+							disown = true;
+						}
+
+						args[i - disown] = token;
+						i++;
+						token = strtok(NULL, " ");
+					}
+				} else {
+					args[i - disown] = q_toks[l];
+					i++;
+				}
+				args[i - disown] = NULL;
+			}
+			
 			if (strcmp(args[0], "exit") == 0) {
 				return 0;
 			} else if (strcmp(args[0], "cd") == 0) {
@@ -64,7 +109,7 @@ int main() {
 				continue;
 			}
 
-			// start command
+			// start command execution
 			pid_t pid = fork();
 
 			if (!disown & (pid > 0))
