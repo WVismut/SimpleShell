@@ -31,6 +31,7 @@ int main() {
 	pid_t to_wait;
 
 	while (1) {
+		start_of_cycle: // this label helps with errors handling
 		getcwd(cwd, sizeof(cwd));
 		printf(GREEN BOLD "cshell " RESET CYAN BOLD "%s" RESET GREEN BOLD " > " RESET, cwd);
 		if (fgets(input, sizeof(input), stdin) == 0)
@@ -46,6 +47,10 @@ int main() {
 			commands[amm_commands] = token;
 			amm_commands++;
 			token = strtok(NULL, "|");
+			if (amm_commands > MAX_ARGS) {
+				printf("Too much arguments!\n");
+				goto start_of_cycle;
+			}
 		}
 
 		for (int command_i = 0; command_i < amm_commands; command_i++) {
@@ -62,6 +67,11 @@ int main() {
 					q_toks[i] = token + previous_q_state;
 					is_in_quotes[i] = q_state;
 					i++;
+
+					if (i > MAX_ARGS) {
+						printf("Too much arguments!\n");
+						goto start_of_cycle;
+					}
 				}
 
 				// update q_state
@@ -92,6 +102,11 @@ int main() {
 						args[i - disown] = token;
 						i++;
 						token = strtok(NULL, " ");
+
+						if (i > MAX_ARGS) {
+							printf("Too much arguments!\n");
+							goto start_of_cycle;
+						}
 					}
 				} else {
 					args[i - disown] = q_toks[l];
