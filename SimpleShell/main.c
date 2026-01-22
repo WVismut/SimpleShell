@@ -29,6 +29,8 @@ int main() {
 	bool q_state;
 	bool previous_q_state;
 	pid_t to_wait;
+	char *redirect_to;
+	bool redirect;
 
 	while (1) {
 		start_of_cycle: // this label helps with errors handling
@@ -64,7 +66,7 @@ int main() {
 
 				// this thing skips empty tokens which appear in between two arguments in quotation marks
 				if (strcmp(token, " ") != 0) {
-					q_toks[i] = token + previous_q_state;
+					q_toks[i] = token + previous_q_state; // add previous_q_state to skip space ( works perfectly )
 					is_in_quotes[i] = q_state;
 					i++;
 
@@ -87,16 +89,36 @@ int main() {
 			amm_q_tokens = i;
 
 			// tokenize arguments
+			redirect = false;
 			disown = false;
 			i = 0;
 			for (int l = 0; l < amm_q_tokens; l++) {
+				if (redirect)
+						break;
 				if (!is_in_quotes[l]) {
+					
 					token = strtok(q_toks[l], " ");
 					while (token != NULL) {
 
 						// disown option
 						if ((strcmp(token, "disown") == 0) & (i == 0)) {
 							disown = true;
+						}
+
+						// redirection option
+						if (strcmp(token, ">") == 0) {
+							redirect = true;
+							if (l + 2 == amm_q_tokens) { // if filename is in quotation marks
+								redirect_to = q_toks[l + 1];
+							} else if (l + 1 == amm_q_tokens) { // if filename is not in quotation marks
+								token = strtok(NULL, " ");
+								redirect_to = token;
+							} else {
+								printf("Something went horribly wrong\n");
+								goto start_of_cycle;
+							}
+							
+							break;
 						}
 
 						args[i - disown] = token;
@@ -112,8 +134,9 @@ int main() {
 					args[i - disown] = q_toks[l];
 					i++;
 				}
-				args[i - disown] = NULL;
 			}
+			
+			args[i - disown] = NULL;
 			
 			if (strcmp(args[0], "exit") == 0) {
 				return 0;
@@ -131,6 +154,9 @@ int main() {
 				to_wait = pid;
 
 			if (pid == 0) {
+				if (redirect) {
+					freopen(redirect_to, "a+", stdout);
+				}
 				execvp(args[0], args);
 				perror("Command failed");
 				exit(1);
